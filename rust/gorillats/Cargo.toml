@@ -1,0 +1,13 @@
+[package]
+name = "gorillats"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Gorilla time series compression (Pelkonen et al., VLDB 2015) - safe Rust API."
+repository = "https://github.com/asoss/gorillats"
+readme = "../../README.md"
+keywords = ["compression", "timeseries", "gorilla", "tsdb"]
+categories = ["compression"]
+
+[dependencies]
+gorillats-sys = { path = "../gorillats-sys", version = "0.1.0" }

@@ -1,0 +1,57 @@
+[build-system]
+requires = ["scikit-build-core>=0.8", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "gorillats"
+version = "0.1.0"
+description = "Gorilla time series compression (Pelkonen et al., VLDB 2015)."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [{ name = "Asoss GmbH" }]
+keywords = ["compression", "timeseries", "gorilla", "tsdb"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: C",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Archiving :: Compression",
+]
+dependencies = ["numpy>=1.20"]
+
+[project.urls]
+Homepage = "https://github.com/asoss/gorillats"
+Repository = "https://github.com/asoss/gorillats"
+
+[project.optional-dependencies]
+test = ["pytest>=7", "numpy>=1.20"]
+
+[tool.scikit-build]
+minimum-version = "0.8"
+cmake.version = ">=3.20"
+wheel.packages = ["python/gorillats"]
+cmake.args = ["-DGORILLATS_BUILD_PYTHON=ON", "-DGORILLATS_BUILD_TESTS=OFF"]
+
+[tool.scikit-build.cmake.define]
+GORILLATS_BUILD_PYTHON = "ON"
+GORILLATS_BUILD_TESTS = "OFF"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.cibuildwheel]
+build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+skip = "*-musllinux_*"
+test-requires = ["pytest", "numpy"]
+test-command = "pytest {project}/tests/test_compression.py"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+manylinux-x86_64-image = "manylinux2014"
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]

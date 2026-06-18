@@ -1,0 +1,33 @@
+# Build outputs
+/build*/
+/_skbuild/
+/wheelhouse/
+*.so
+*.dylib
+*.dll
+*.pyd
+*.a
+*.lib
+*.o
+*.obj
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+dist/
+
+# Rust
+/rust/target/
+**/*.rs.bk
+Cargo.lock
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

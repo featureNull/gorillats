@@ -1,0 +1,3 @@
+[workspace]
+members = ["gorillats-sys", "gorillats"]
+resolver = "2"
