@@ -133,6 +133,72 @@ TEST(Wrapper, IteratorYieldsCount) {
     EXPECT_EQ(n, 50);
 }
 
+TEST(Batch, AppendAndDecodeMatchPerPoint) {
+    const int kN = 10000;
+    std::vector<int64_t> ts(kN);
+    std::vector<double> vals(kN);
+    for (int i = 0; i < kN; ++i) {
+        ts[i] = 1'600'000'000 + static_cast<int64_t>(i) * 60;
+        vals[i] = 100.0 + (i % 7) * 0.5;
+    }
+
+    // Batch append.
+    gorillats::Compressor batch(0, static_cast<std::size_t>(kN) * 16 + 64);
+    batch.append_batch(ts.data(), vals.data(), kN);
+    auto batch_bytes = batch.bytes();
+    EXPECT_EQ(batch.size(), static_cast<std::size_t>(kN));
+
+    // Per-point append must produce a byte-identical stream.
+    gorillats::Compressor per(0, static_cast<std::size_t>(kN) * 16 + 64);
+    for (int i = 0; i < kN; ++i) per.append(ts[i], vals[i]);
+    EXPECT_EQ(batch_bytes, per.bytes());
+
+    // Batch decode into columns.
+    gorillats::Decompressor dec(batch_bytes);
+    std::vector<int64_t> out_ts(dec.size());
+    std::vector<double> out_vals(dec.size());
+    std::size_t got = dec.decode_into(out_ts.data(), out_vals.data());
+    ASSERT_EQ(got, static_cast<std::size_t>(kN));
+    for (int i = 0; i < kN; ++i) {
+        EXPECT_EQ(out_ts[i], ts[i]);
+        EXPECT_DOUBLE_EQ(out_vals[i], vals[i]);
+    }
+}
+
+TEST(Batch, CApiRoundtrip) {
+    const std::size_t kN = 256;
+    std::vector<int64_t> ts(kN), out_ts(kN);
+    std::vector<double> vals(kN), out_vals(kN);
+    for (std::size_t i = 0; i < kN; ++i) {
+        ts[i] = static_cast<int64_t>(i);
+        vals[i] = static_cast<double>(i) * 1.25;
+    }
+    std::vector<uint8_t> buf(kN * 16 + 64);
+    gorillats_compressor_t* c =
+        gorillats_compressor_create(buf.data(), buf.size(), 0);
+    ASSERT_NE(c, nullptr);
+    std::size_t written = 0;
+    ASSERT_EQ(gorillats_compress_batch(c, ts.data(), vals.data(), kN, &written),
+              GORILLATS_OK);
+    EXPECT_EQ(written, kN);
+    gorillats_compressor_finish(c);
+    gorillats_compressor_destroy(c);
+
+    gorillats_decompressor_t* d =
+        gorillats_decompressor_create(buf.data(), buf.size());
+    ASSERT_NE(d, nullptr);
+    std::size_t decoded = 0;
+    ASSERT_EQ(gorillats_decompress_batch(d, out_ts.data(), out_vals.data(), kN,
+                                         &decoded),
+              GORILLATS_OK);
+    EXPECT_EQ(decoded, kN);
+    gorillats_decompressor_destroy(d);
+    for (std::size_t i = 0; i < kN; ++i) {
+        EXPECT_EQ(out_ts[i], ts[i]);
+        EXPECT_DOUBLE_EQ(out_vals[i], vals[i]);
+    }
+}
+
 TEST(CApi, RawRoundtrip) {
     std::vector<uint8_t> buf(1024);
     gorillats_compressor_t* c =

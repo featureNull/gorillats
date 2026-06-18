@@ -40,9 +40,9 @@ class PyCompressor {
         if (ts.shape(0) != vs.shape(0))
             throw std::invalid_argument(
                 "timestamps and values must have equal length");
-        const py::ssize_t n = ts.shape(0);
+        const std::size_t n = static_cast<std::size_t>(ts.shape(0));
         py::gil_scoped_release release;
-        for (py::ssize_t i = 0; i < n; ++i) impl_.append(ts(i), vs(i));
+        impl_.append_batch(ts.data(0), vs.data(0), n);
     }
 
     py::bytes get_bytes() const {
@@ -69,13 +69,11 @@ class PyDecompressor {
         const std::size_t n = impl_.size();
         py::array_t<int64_t> ts(n);
         py::array_t<double> vs(n);
-        auto tsm = ts.mutable_unchecked<1>();
-        auto vsm = vs.mutable_unchecked<1>();
-        std::size_t i = 0;
-        for (const auto &p : impl_) {
-            tsm(i) = p.first;
-            vsm(i) = p.second;
-            ++i;
+        int64_t *tsp = ts.mutable_data(0);
+        double *vsp = vs.mutable_data(0);
+        {
+            py::gil_scoped_release release;
+            impl_.decode_into(tsp, vsp);
         }
         return py::make_tuple(std::move(ts), std::move(vs));
     }
@@ -109,11 +107,11 @@ py::bytes compress_arrays(
     if (ts.shape(0) != vs.shape(0))
         throw std::invalid_argument(
             "timestamps and values must have equal length");
-    const py::ssize_t n = ts.shape(0);
+    const std::size_t n = static_cast<std::size_t>(ts.shape(0));
     gorillats::Compressor c(block_timestamp, worst_case_capacity(n));
     {
         py::gil_scoped_release release;
-        for (py::ssize_t i = 0; i < n; ++i) c.append(ts(i), vs(i));
+        c.append_batch(ts.data(0), vs.data(0), n);
     }
     std::vector<uint8_t> b = c.bytes();
     return py::bytes(reinterpret_cast<const char *>(b.data()), b.size());

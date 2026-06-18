@@ -48,11 +48,20 @@ struct value_traits<double> {
     static int compress(gorillats_compressor_t *c, int64_t ts, double v) {
         return gorillats_compress(c, ts, v);
     }
+    static int compress_batch(gorillats_compressor_t *c, const int64_t *ts,
+                              const double *v, std::size_t n,
+                              std::size_t *written) {
+        return gorillats_compress_batch(c, ts, v, n, written);
+    }
     static gorillats_decompressor_t *open(const uint8_t *b, std::size_t n) {
         return gorillats_decompressor_create(b, n);
     }
     static int next(gorillats_decompressor_t *d, int64_t *ts, double *v) {
         return gorillats_decompress_next(d, ts, v);
+    }
+    static int decode_batch(gorillats_decompressor_t *d, int64_t *ts,
+                            double *v, std::size_t n, std::size_t *decoded) {
+        return gorillats_decompress_batch(d, ts, v, n, decoded);
     }
 };
 
@@ -66,11 +75,20 @@ struct value_traits<float> {
     static int compress(gorillats_compressor_t *c, int64_t ts, float v) {
         return gorillats_compress_f32(c, ts, v);
     }
+    static int compress_batch(gorillats_compressor_t *c, const int64_t *ts,
+                              const float *v, std::size_t n,
+                              std::size_t *written) {
+        return gorillats_compress_batch_f32(c, ts, v, n, written);
+    }
     static gorillats_decompressor_t *open(const uint8_t *b, std::size_t n) {
         return gorillats_decompressor_create_f32(b, n);
     }
     static int next(gorillats_decompressor_t *d, int64_t *ts, float *v) {
         return gorillats_decompress_next_f32(d, ts, v);
+    }
+    static int decode_batch(gorillats_decompressor_t *d, int64_t *ts,
+                            float *v, std::size_t n, std::size_t *decoded) {
+        return gorillats_decompress_batch_f32(d, ts, v, n, decoded);
     }
 };
 
@@ -115,6 +133,22 @@ class BasicCompressor {
         if (rc != GORILLATS_OK)
             throw std::runtime_error("gorillats: compression failed");
         ++count_;
+    }
+
+    /// Append `n` points from parallel arrays in a single core call. This is
+    /// the fastest way to add many points: the per-call ABI overhead is paid
+    /// once and the encoder state stays hot across the inner loop.
+    /// Throws std::overflow_error if the buffer fills before all points fit.
+    void append_batch(const int64_t *timestamps, const T *values,
+                      std::size_t n) {
+        std::size_t written = 0;
+        int rc = traits::compress_batch(raw_.get(), timestamps, values, n,
+                                        &written);
+        count_ += written;
+        if (rc == GORILLATS_ERR_OVERFLOW)
+            throw std::overflow_error("gorillats: output buffer full");
+        if (rc != GORILLATS_OK)
+            throw std::runtime_error("gorillats: compression failed");
     }
 
     /// Number of appended points.
@@ -233,6 +267,27 @@ class BasicDecompressor {
         out.reserve(count_);
         for (const auto &p : *this) out.push_back(p);
         return out;
+    }
+
+    /// Decode every point directly into caller-owned parallel arrays in a
+    /// single core call. `timestamps` and `values` must each have room for
+    /// size() elements. Returns the number of points written.
+    std::size_t decode_into(int64_t *timestamps, T *values) const {
+        if (count_ == 0) return 0;
+        struct Deleter {
+            void operator()(gorillats_decompressor_t *d) const {
+                gorillats_decompressor_destroy(d);
+            }
+        };
+        std::unique_ptr<gorillats_decompressor_t, Deleter> dec(
+            traits::open(data_.data() + detail::kHeaderSize,
+                         data_.size() - detail::kHeaderSize));
+        std::size_t decoded = 0;
+        int rc = traits::decode_batch(dec.get(), timestamps, values, count_,
+                                      &decoded);
+        if (rc != GORILLATS_OK && decoded != count_)
+            throw std::runtime_error("gorillats: truncated stream");
+        return decoded;
     }
 
    private:

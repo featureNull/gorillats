@@ -52,8 +52,8 @@ macro_rules! impl_codec {
     (
         $val:ty, $tag:literal,
         $comp:ident, $decomp:ident, $points:ident,
-        $sys_create:path, $sys_compress:path,
-        $sys_open:path, $sys_next:path
+        $sys_create:path, $sys_compress:path, $sys_compress_batch:path,
+        $sys_open:path, $sys_next:path, $sys_decode_batch:path
     ) => {
         /// Streaming compressor for a single time series.
         pub struct $comp {
@@ -80,6 +80,41 @@ macro_rules! impl_codec {
                     return Err(Error::Overflow);
                 }
                 self.count += 1;
+                Ok(())
+            }
+
+            /// Append many points from parallel slices in a single core call.
+            ///
+            /// This is the fastest way to add many points: the per-call FFI
+            /// overhead is paid once and the encoder state stays hot across
+            /// the inner loop. `timestamps` and `values` must have equal
+            /// length. On overflow, the points that fit are kept and
+            /// [`Error::Overflow`] is returned.
+            pub fn append_slice(
+                &mut self,
+                timestamps: &[i64],
+                values: &[$val],
+            ) -> Result<(), Error> {
+                assert_eq!(
+                    timestamps.len(),
+                    values.len(),
+                    "timestamps and values must have equal length"
+                );
+                let n = timestamps.len();
+                let mut written: usize = 0;
+                let rc = unsafe {
+                    $sys_compress_batch(
+                        self.handle,
+                        timestamps.as_ptr(),
+                        values.as_ptr(),
+                        n,
+                        &mut written,
+                    )
+                };
+                self.count += written as u64;
+                if rc == gorillats_sys::GORILLATS_ERR_OVERFLOW {
+                    return Err(Error::Overflow);
+                }
                 Ok(())
             }
 
@@ -152,6 +187,34 @@ macro_rules! impl_codec {
                 assert!(!handle.is_null(), "gorillats: allocation failed");
                 $points { handle, remaining: self.count, _marker: std::marker::PhantomData }
             }
+
+            /// Decode every point into parallel `(timestamps, values)` vectors
+            /// in a single core call. This is the fastest bulk-decode path.
+            pub fn to_columns(&self) -> (Vec<i64>, Vec<$val>) {
+                let n = self.count as usize;
+                let mut ts: Vec<i64> = vec![0; n];
+                let mut vals: Vec<$val> = vec![0 as $val; n];
+                if n > 0 {
+                    let payload = &self.data[HEADER_SIZE..];
+                    let handle =
+                        unsafe { $sys_open(payload.as_ptr(), payload.len()) };
+                    assert!(!handle.is_null(), "gorillats: allocation failed");
+                    let mut decoded: usize = 0;
+                    unsafe {
+                        $sys_decode_batch(
+                            handle,
+                            ts.as_mut_ptr(),
+                            vals.as_mut_ptr(),
+                            n,
+                            &mut decoded,
+                        );
+                        gorillats_sys::gorillats_decompressor_destroy(handle);
+                    }
+                    ts.truncate(decoded);
+                    vals.truncate(decoded);
+                }
+                (ts, vals)
+            }
         }
 
         impl IntoIterator for $decomp {
@@ -209,8 +272,10 @@ impl_codec!(
     Compressor, Decompressor, Points,
     gorillats_sys::gorillats_compressor_create,
     gorillats_sys::gorillats_compress,
+    gorillats_sys::gorillats_compress_batch,
     gorillats_sys::gorillats_decompressor_create,
-    gorillats_sys::gorillats_decompress_next
+    gorillats_sys::gorillats_decompress_next,
+    gorillats_sys::gorillats_decompress_batch
 );
 
 impl_codec!(
@@ -218,6 +283,8 @@ impl_codec!(
     FloatCompressor, FloatDecompressor, FloatPoints,
     gorillats_sys::gorillats_compressor_create_f32,
     gorillats_sys::gorillats_compress_f32,
+    gorillats_sys::gorillats_compress_batch_f32,
     gorillats_sys::gorillats_decompressor_create_f32,
-    gorillats_sys::gorillats_decompress_next_f32
+    gorillats_sys::gorillats_decompress_next_f32,
+    gorillats_sys::gorillats_decompress_batch_f32
 );

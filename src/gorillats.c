@@ -365,6 +365,34 @@ int gorillats_compress_f32(gorillats_compressor_t *c, int64_t ts, float val) {
     return c->w.overflow ? GORILLATS_ERR_OVERFLOW : GORILLATS_OK;
 }
 
+int gorillats_compress_batch(gorillats_compressor_t *c, const int64_t *ts,
+                             const double *vals, size_t n, size_t *written) {
+    if (!c || c->width != 64 || (n && (!ts || !vals)))
+        return GORILLATS_ERR_ARG;
+    size_t i = 0;
+    for (; i < n; ++i) {
+        gt_ts_encode(&c->w, &c->ts, ts[i]);
+        gt_val_encode(&c->w, &c->vs, gt_double_to_bits(vals[i]), 64);
+        if (c->w.overflow) break;
+    }
+    if (written) *written = i;
+    return c->w.overflow ? GORILLATS_ERR_OVERFLOW : GORILLATS_OK;
+}
+
+int gorillats_compress_batch_f32(gorillats_compressor_t *c, const int64_t *ts,
+                                 const float *vals, size_t n, size_t *written) {
+    if (!c || c->width != 32 || (n && (!ts || !vals)))
+        return GORILLATS_ERR_ARG;
+    size_t i = 0;
+    for (; i < n; ++i) {
+        gt_ts_encode(&c->w, &c->ts, ts[i]);
+        gt_val_encode(&c->w, &c->vs, gt_float_to_bits(vals[i]), 32);
+        if (c->w.overflow) break;
+    }
+    if (written) *written = i;
+    return c->w.overflow ? GORILLATS_ERR_OVERFLOW : GORILLATS_OK;
+}
+
 size_t gorillats_compressor_finish(gorillats_compressor_t *c) {
     return c ? gt_writer_len(&c->w) : 0;
 }
@@ -421,6 +449,47 @@ int gorillats_decompress_next_f32(gorillats_decompressor_t *d, int64_t *ts_out,
     *ts_out = ts;
     *val_out = gt_bits_to_float(bits);
     return GORILLATS_OK;
+}
+
+int gorillats_decompress_batch(gorillats_decompressor_t *d, int64_t *ts_out,
+                               double *vals_out, size_t n, size_t *decoded) {
+    if (!d || d->width != 64 || (n && (!ts_out || !vals_out)))
+        return GORILLATS_ERR_ARG;
+    size_t i = 0;
+    int rc = GORILLATS_OK;
+    for (; i < n; ++i) {
+        int64_t ts;
+        uint64_t bits;
+        rc = gt_ts_decode(&d->r, &d->ts, &ts);
+        if (rc != GORILLATS_OK) break;
+        rc = gt_val_decode(&d->r, &d->vs, &bits, 64);
+        if (rc != GORILLATS_OK) break;
+        ts_out[i] = ts;
+        vals_out[i] = gt_bits_to_double(bits);
+    }
+    if (decoded) *decoded = i;
+    return (i == n) ? GORILLATS_OK : rc;
+}
+
+int gorillats_decompress_batch_f32(gorillats_decompressor_t *d,
+                                   int64_t *ts_out, float *vals_out, size_t n,
+                                   size_t *decoded) {
+    if (!d || d->width != 32 || (n && (!ts_out || !vals_out)))
+        return GORILLATS_ERR_ARG;
+    size_t i = 0;
+    int rc = GORILLATS_OK;
+    for (; i < n; ++i) {
+        int64_t ts;
+        uint64_t bits;
+        rc = gt_ts_decode(&d->r, &d->ts, &ts);
+        if (rc != GORILLATS_OK) break;
+        rc = gt_val_decode(&d->r, &d->vs, &bits, 32);
+        if (rc != GORILLATS_OK) break;
+        ts_out[i] = ts;
+        vals_out[i] = gt_bits_to_float(bits);
+    }
+    if (decoded) *decoded = i;
+    return (i == n) ? GORILLATS_OK : rc;
 }
 
 void gorillats_decompressor_destroy(gorillats_decompressor_t *d) { free(d); }

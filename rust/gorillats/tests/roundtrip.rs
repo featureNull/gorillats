@@ -84,3 +84,28 @@ fn wrong_value_type_rejected() {
     let bytes = c.finish();
     assert!(FloatDecompressor::new(bytes).is_err());
 }
+
+#[test]
+fn batch_matches_per_point() {
+    let n = 5000usize;
+    let ts: Vec<i64> = (0..n as i64).map(|i| 1_600_000_000 + i * 60).collect();
+    let vals: Vec<f64> = (0..n).map(|i| 100.0 + (i % 7) as f64 * 0.5).collect();
+
+    // Batch append.
+    let mut batch = Compressor::new(0, n * 16 + 64);
+    batch.append_slice(&ts, &vals).unwrap();
+    assert_eq!(batch.len(), n);
+    let batch_bytes = batch.finish();
+
+    // Per-point append must yield identical bytes.
+    let mut per = Compressor::new(0, n * 16 + 64);
+    for i in 0..n {
+        per.append(ts[i], vals[i]).unwrap();
+    }
+    assert_eq!(batch_bytes, per.finish());
+
+    // Bulk column decode.
+    let (out_ts, out_vals) = Decompressor::new(batch_bytes).unwrap().to_columns();
+    assert_eq!(out_ts, ts);
+    assert_eq!(out_vals, vals);
+}

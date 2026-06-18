@@ -45,6 +45,13 @@ gorillats_compressor_t *gorillats_compressor_create(uint8_t *buf, size_t len,
 /* Append one (timestamp, value) point. Returns GORILLATS_OK or an error. */
 int gorillats_compress(gorillats_compressor_t *c, int64_t ts, double val);
 
+/* Append n points from parallel arrays in a single call. Encoding stops at the
+ * first point that would overflow the buffer; *written receives the number of
+ * points successfully encoded (may be NULL). Returns GORILLATS_OK, or
+ * GORILLATS_ERR_OVERFLOW if not all points fit. */
+int gorillats_compress_batch(gorillats_compressor_t *c, const int64_t *ts,
+                             const double *vals, size_t n, size_t *written);
+
 /* Flush the trailing partial byte and return the number of bytes written. */
 size_t gorillats_compressor_finish(gorillats_compressor_t *c);
 
@@ -60,6 +67,13 @@ gorillats_decompressor_t *gorillats_decompressor_create(const uint8_t *buf,
 int gorillats_decompress_next(gorillats_decompressor_t *d, int64_t *ts_out,
                               double *val_out);
 
+/* Decode up to n points into parallel output arrays in a single call.
+ * *decoded receives the number of points produced (may be NULL). Returns
+ * GORILLATS_OK when n points were decoded, or GORILLATS_ERR_EOF once the
+ * stream is exhausted. */
+int gorillats_decompress_batch(gorillats_decompressor_t *d, int64_t *ts_out,
+                               double *vals_out, size_t n, size_t *decoded);
+
 void gorillats_decompressor_destroy(gorillats_decompressor_t *d);
 
 /* ----------------------------------------------------------------------------
@@ -72,11 +86,16 @@ void gorillats_decompressor_destroy(gorillats_decompressor_t *d);
 gorillats_compressor_t *gorillats_compressor_create_f32(uint8_t *buf,
                                                         size_t len, int64_t t0);
 int gorillats_compress_f32(gorillats_compressor_t *c, int64_t ts, float val);
+int gorillats_compress_batch_f32(gorillats_compressor_t *c, const int64_t *ts,
+                                 const float *vals, size_t n, size_t *written);
 
 gorillats_decompressor_t *gorillats_decompressor_create_f32(const uint8_t *buf,
                                                             size_t len);
 int gorillats_decompress_next_f32(gorillats_decompressor_t *d, int64_t *ts_out,
                                   float *val_out);
+int gorillats_decompress_batch_f32(gorillats_decompressor_t *d,
+                                   int64_t *ts_out, float *vals_out, size_t n,
+                                   size_t *decoded);
 
 /* finish / destroy are shared with the double API above. */
 

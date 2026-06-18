@@ -35,6 +35,13 @@ extern "C" {
         ts: i64,
         val: f64,
     ) -> c_int;
+    pub fn gorillats_compress_batch(
+        c: *mut gorillats_compressor,
+        ts: *const i64,
+        vals: *const f64,
+        n: usize,
+        written: *mut usize,
+    ) -> c_int;
     pub fn gorillats_compressor_finish(c: *mut gorillats_compressor) -> usize;
     pub fn gorillats_compressor_destroy(c: *mut gorillats_compressor);
 
@@ -46,6 +53,13 @@ extern "C" {
         d: *mut gorillats_decompressor,
         ts_out: *mut i64,
         val_out: *mut f64,
+    ) -> c_int;
+    pub fn gorillats_decompress_batch(
+        d: *mut gorillats_decompressor,
+        ts_out: *mut i64,
+        vals_out: *mut f64,
+        n: usize,
+        decoded: *mut usize,
     ) -> c_int;
     pub fn gorillats_decompressor_destroy(d: *mut gorillats_decompressor);
 
@@ -60,6 +74,13 @@ extern "C" {
         ts: i64,
         val: f32,
     ) -> c_int;
+    pub fn gorillats_compress_batch_f32(
+        c: *mut gorillats_compressor,
+        ts: *const i64,
+        vals: *const f32,
+        n: usize,
+        written: *mut usize,
+    ) -> c_int;
 
     pub fn gorillats_decompressor_create_f32(
         buf: *const u8,
@@ -69,5 +90,12 @@ extern "C" {
         d: *mut gorillats_decompressor,
         ts_out: *mut i64,
         val_out: *mut f32,
+    ) -> c_int;
+    pub fn gorillats_decompress_batch_f32(
+        d: *mut gorillats_decompressor,
+        ts_out: *mut i64,
+        vals_out: *mut f32,
+        n: usize,
+        decoded: *mut usize,
     ) -> c_int;
 }
