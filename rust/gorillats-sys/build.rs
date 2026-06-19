@@ -2,12 +2,10 @@
 use std::path::PathBuf;
 
 fn main() {
-    // Crate is at <repo>/rust/gorillats-sys; the C core lives at <repo>/src.
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
-    let src = repo.join("src").join("gorillats.c");
-    let include = repo.join("include");
+    // Vendored C core lives at <crate>/c/ so the crate is self-contained on crates.io.
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src = crate_dir.join("c").join("gorillats.c");
+    let include = crate_dir.join("c");
 
     cc::Build::new()
         .file(&src)

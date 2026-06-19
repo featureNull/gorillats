@@ -1,6 +1,6 @@
 from conan import ConanFile
 from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
-from conan.tools.files import copy
+from conan.tools.files import copy, get
 import os
 
 
@@ -27,6 +27,12 @@ class GorillatsConan(ConanFile):
         "include/*",
         "src/*",
     )
+
+    def source(self):
+        # Used by Conan Center Index: downloads the tagged release tarball.
+        # For local development (conan create .) exports_sources is used instead.
+        get(self, **self.conan_data["sources"][self.version],
+            destination=self.source_folder, strip_root=True)
 
     def config_options(self):
         if self.settings.os == "Windows":
